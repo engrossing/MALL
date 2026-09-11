@@ -6,7 +6,7 @@ export default function NewProductPage() {
     <div className="max-w-xl space-y-6">
       <h1 className="text-xl font-bold text-slate-900">상품 등록</h1>
 
-      <form action={createProductAction} className="space-y-4">
+      <form action={createProductAction} encType="multipart/form-data" className="space-y-4">
         <Field label="SKU (상품코드) *" name="sku" required />
         <Field label="상품명 *" name="name" required />
         <div className="grid grid-cols-2 gap-4">
@@ -25,6 +25,21 @@ export default function NewProductPage() {
             rows={3}
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700">
+            상품 이미지
+          </label>
+          <input
+            type="file"
+            name="image"
+            accept="image/*"
+            className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-slate-800"
+          />
+          <p className="mt-1 text-xs text-slate-400">
+            선택사항입니다. jpg, png 등 이미지 파일을 올려주세요.
+          </p>
         </div>
 
         <div className="flex gap-3">

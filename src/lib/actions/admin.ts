@@ -5,10 +5,27 @@ import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { put } from "@vercel/blob";
 import { db } from "@/db/client";
 import { users, products, priceTiers, productTierPrices, orders } from "@/db/schema";
 import { createId } from "@/db/id";
 import { getCurrentUser } from "@/lib/current-user";
+import { ProductImageStorageNotConfiguredError } from "@/lib/errors";
+
+// 상품 이미지 업로드 (Vercel Blob 저장소 사용). 파일이 없으면 undefined(변경 없음) 반환.
+async function uploadProductImageIfPresent(formData: FormData): Promise<string | null | undefined> {
+  const file = formData.get("image");
+  if (!(file instanceof File) || file.size === 0) return undefined; // 변경 없음
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new ProductImageStorageNotConfiguredError();
+  }
+  const ext = file.name.split(".").pop() || "jpg";
+  const blob = await put(`products/${createId()}.${ext}`, file, {
+    access: "public",
+    addRandomSuffix: false,
+  });
+  return blob.url;
+}
 
 async function requireAdmin() {
   const user = await getCurrentUser();
@@ -97,6 +114,17 @@ export async function createProductAction(formData: FormData) {
   await requireAdmin();
   const raw = Object.fromEntries(formData.entries());
   const data = productSchema.parse(raw);
+  let imageUrl: string | null | undefined;
+  let imageFailed = false;
+  try {
+    imageUrl = await uploadProductImageIfPresent(formData);
+  } catch (e) {
+    if (e instanceof ProductImageStorageNotConfiguredError) {
+      imageFailed = true;
+    } else {
+      throw e;
+    }
+  }
 
   await db.insert(products).values({
     id: createId(),
@@ -108,10 +136,11 @@ export async function createProductAction(formData: FormData) {
     stock: data.stock,
     safetyStock: data.safetyStock,
     description: data.description || null,
+    imageUrl: imageUrl || null,
   });
 
   revalidatePath("/admin/products");
-  redirect("/admin/products");
+  redirect(imageFailed ? "/admin/products?error=blob_missing" : "/admin/products");
 }
 
 export async function updateProductAction(formData: FormData) {
@@ -119,6 +148,17 @@ export async function updateProductAction(formData: FormData) {
   const id = String(formData.get("id"));
   const raw = Object.fromEntries(formData.entries());
   const data = productSchema.parse(raw);
+  let imageUrl: string | null | undefined;
+  let imageFailed = false;
+  try {
+    imageUrl = await uploadProductImageIfPresent(formData);
+  } catch (e) {
+    if (e instanceof ProductImageStorageNotConfiguredError) {
+      imageFailed = true;
+    } else {
+      throw e;
+    }
+  }
 
   await db
     .update(products)
@@ -132,11 +172,13 @@ export async function updateProductAction(formData: FormData) {
       safetyStock: data.safetyStock,
       description: data.description || null,
       updatedAt: new Date(),
+      // imageUrl이 undefined면 새 파일을 올리지 않은 것이므로 기존 값을 유지합니다.
+      ...(imageUrl !== undefined ? { imageUrl: imageUrl || null } : {}),
     })
     .where(eq(products.id, id));
 
   revalidatePath("/admin/products");
-  redirect("/admin/products");
+  redirect(imageFailed ? "/admin/products?error=blob_missing" : "/admin/products");
 }
 
 export async function toggleProductActiveAction(formData: FormData) {

@@ -5,7 +5,12 @@ import { products } from "@/db/schema";
 import { formatKRW } from "@/lib/pricing";
 import { toggleProductActiveAction, adjustStockAction } from "@/lib/actions/admin";
 
-export default async function AdminProductsPage() {
+export default async function AdminProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
   const allProducts = await db
     .select()
     .from(products)
@@ -23,10 +28,19 @@ export default async function AdminProductsPage() {
         </Link>
       </div>
 
+      {error === "blob_missing" && (
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          상품 정보는 저장됐지만, 이미지 저장소(Vercel Blob)가 아직 연결되지 않아
+          이미지는 업로드되지 않았습니다. Vercel 프로젝트의 Storage 탭에서 Blob
+          저장소를 추가한 뒤, 상품 수정 화면에서 이미지를 다시 올려주세요.
+        </p>
+      )}
+
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
+              <th className="px-4 py-2">이미지</th>
               <th className="px-4 py-2">SKU</th>
               <th className="px-4 py-2">상품명</th>
               <th className="px-4 py-2">기준가</th>
@@ -40,6 +54,18 @@ export default async function AdminProductsPage() {
               const lowStock = p.stock <= p.safetyStock;
               return (
                 <tr key={p.id} className="border-t border-slate-100">
+                  <td className="px-4 py-2">
+                    {p.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={p.imageUrl}
+                        alt={p.name}
+                        className="h-10 w-10 rounded-md border border-slate-200 object-cover"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 rounded-md border border-dashed border-slate-200" />
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-slate-500">{p.sku}</td>
                   <td className="px-4 py-2 font-medium text-slate-900">
                     {p.name}

@@ -47,6 +47,18 @@ export default async function MallProductsPage() {
               className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-4"
             >
               <div>
+                {p.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.imageUrl}
+                    alt={p.name}
+                    className="mb-3 aspect-square w-full rounded-lg border border-slate-100 object-cover"
+                  />
+                ) : (
+                  <div className="mb-3 flex aspect-square w-full items-center justify-center rounded-lg border border-dashed border-slate-200 text-xs text-slate-300">
+                    이미지 없음
+                  </div>
+                )}
                 <p className="text-xs text-slate-400">{p.category ?? "일반"}</p>
                 <h2 className="mt-1 font-semibold text-slate-900">{p.name}</h2>
                 <p className="text-xs text-slate-400">

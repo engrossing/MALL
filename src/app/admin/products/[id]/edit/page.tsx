@@ -23,7 +23,7 @@ export default async function EditProductPage({
     <div className="max-w-xl space-y-6">
       <h1 className="text-xl font-bold text-slate-900">상품 수정</h1>
 
-      <form action={updateProductAction} className="space-y-4">
+      <form action={updateProductAction} encType="multipart/form-data" className="space-y-4">
         <input type="hidden" name="id" value={product.id} />
         <Field label="SKU (상품코드) *" name="sku" defaultValue={product.sku} required />
         <Field label="상품명 *" name="name" defaultValue={product.name} required />
@@ -66,6 +66,29 @@ export default async function EditProductPage({
             defaultValue={product.description ?? ""}
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700">
+            상품 이미지
+          </label>
+          {product.imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={product.imageUrl}
+              alt={product.name}
+              className="mt-2 h-24 w-24 rounded-lg border border-slate-200 object-cover"
+            />
+          )}
+          <input
+            type="file"
+            name="image"
+            accept="image/*"
+            className="mt-2 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-slate-800"
+          />
+          <p className="mt-1 text-xs text-slate-400">
+            새 파일을 선택하면 기존 이미지가 교체됩니다. 그대로 두면 유지됩니다.
+          </p>
         </div>
 
         <div className="flex gap-3">
