@@ -6,6 +6,7 @@ import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { put } from "@vercel/blob";
+import * as XLSX from "xlsx";
 import { db } from "@/db/client";
 import { users, products, priceTiers, productTierPrices, orders } from "@/db/schema";
 import { createId } from "@/db/id";
@@ -179,6 +180,120 @@ export async function updateProductAction(formData: FormData) {
 
   revalidatePath("/admin/products");
   redirect(imageFailed ? "/admin/products?error=blob_missing" : "/admin/products");
+}
+
+// 엑셀 파일로 상품 일괄 등록/업데이트. 모델명(SKU)이 이미 있으면 업데이트, 없으면 새로 등록합니다.
+// 기대하는 컬럼: 상품명, 모델명, 제조원, 입수량, 제품구성, 원산지, 상품설명, 일반 소비자가, 공급가(...), 대표이미지
+export async function bulkImportProductsAction(formData: FormData) {
+  await requireAdmin();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    redirect("/admin/products?error=bulk_no_file");
+  }
+
+  let rows: unknown[][];
+  try {
+    const buf = Buffer.from(await (file as File).arrayBuffer());
+    const wb = XLSX.read(buf, { type: "buffer" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false }) as unknown[][];
+  } catch {
+    redirect("/admin/products?error=bulk_parse_failed");
+  }
+
+  if (!rows || rows.length < 2) {
+    redirect("/admin/products?error=bulk_empty");
+  }
+
+  const header = rows[0].map((h) => String(h ?? "").trim());
+  const col = {
+    name: header.indexOf("상품명"),
+    model: header.indexOf("모델명"),
+    maker: header.indexOf("제조원"),
+    packQty: header.indexOf("입수량"),
+    composition: header.indexOf("제품구성"),
+    origin: header.indexOf("원산지"),
+    desc: header.indexOf("상품설명"),
+    retailPrice: header.indexOf("일반 소비자가"),
+    supplyPrice: header.findIndex((h) => h.startsWith("공급가")),
+    image: header.indexOf("대표이미지"),
+  };
+
+  if (col.name === -1 || col.model === -1 || col.supplyPrice === -1) {
+    redirect("/admin/products?error=bulk_bad_format");
+  }
+
+  const asText = (v: unknown) => String(v ?? "").trim();
+
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const row of rows.slice(1)) {
+    const name = asText(row[col.name]);
+    const sku = asText(row[col.model]);
+    if (!name || !sku) {
+      skipped++;
+      continue;
+    }
+
+    const priceNum =
+      Number(row[col.supplyPrice]) ||
+      (col.retailPrice >= 0 ? Number(row[col.retailPrice]) : 0) ||
+      0;
+    if (priceNum <= 0) {
+      skipped++;
+      continue;
+    }
+
+    const descParts: string[] = [];
+    if (col.desc >= 0 && row[col.desc]) descParts.push(asText(row[col.desc]));
+    const extra: string[] = [];
+    if (col.composition >= 0 && row[col.composition]) extra.push(`구성: ${asText(row[col.composition])}`);
+    if (col.origin >= 0 && row[col.origin]) extra.push(`원산지: ${asText(row[col.origin])}`);
+    if (col.packQty >= 0 && row[col.packQty]) extra.push(`입수량: ${asText(row[col.packQty])}`);
+    if (extra.length) descParts.push(extra.join(" · "));
+    const description = descParts.length ? descParts.join("\n\n") : null;
+
+    const category = col.maker >= 0 ? asText(row[col.maker]) || null : null;
+    const imageUrl = col.image >= 0 ? asText(row[col.image]) || null : null;
+
+    const existing = await db.select().from(products).where(eq(products.sku, sku)).limit(1);
+
+    if (existing[0]) {
+      await db
+        .update(products)
+        .set({
+          name,
+          category,
+          basePrice: String(priceNum),
+          description,
+          imageUrl: imageUrl || existing[0].imageUrl,
+          updatedAt: new Date(),
+        })
+        .where(eq(products.id, existing[0].id));
+      updated++;
+    } else {
+      await db.insert(products).values({
+        id: createId(),
+        sku,
+        name,
+        category,
+        unit: "EA",
+        basePrice: String(priceNum),
+        stock: 0,
+        safetyStock: 0,
+        description,
+        imageUrl,
+      });
+      created++;
+    }
+  }
+
+  revalidatePath("/admin/products");
+  redirect(
+    `/admin/products?bulk_created=${created}&bulk_updated=${updated}&bulk_skipped=${skipped}`
+  );
 }
 
 export async function toggleProductActiveAction(formData: FormData) {
