@@ -3,14 +3,31 @@ import { desc } from "drizzle-orm";
 import { db } from "@/db/client";
 import { products } from "@/db/schema";
 import { formatKRW } from "@/lib/pricing";
-import { toggleProductActiveAction, adjustStockAction } from "@/lib/actions/admin";
+import {
+  toggleProductActiveAction,
+  adjustStockAction,
+  bulkImportProductsAction,
+} from "@/lib/actions/admin";
+
+const BULK_ERROR_MESSAGE: Record<string, string> = {
+  bulk_no_file: "업로드할 엑셀 파일을 선택해주세요.",
+  bulk_parse_failed: "엑셀 파일을 읽지 못했습니다. 파일이 손상되지 않았는지 확인해주세요.",
+  bulk_empty: "엑셀 파일에 상품 데이터가 없습니다.",
+  bulk_bad_format:
+    "엑셀 파일의 열 구성을 인식하지 못했습니다. '상품명', '모델명', '공급가' 열이 있는지 확인해주세요.",
+};
 
 export default async function AdminProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    bulk_created?: string;
+    bulk_updated?: string;
+    bulk_skipped?: string;
+  }>;
 }) {
-  const { error } = await searchParams;
+  const { error, bulk_created, bulk_updated, bulk_skipped } = await searchParams;
   const allProducts = await db
     .select()
     .from(products)
@@ -35,6 +52,47 @@ export default async function AdminProductsPage({
           저장소를 추가한 뒤, 상품 수정 화면에서 이미지를 다시 올려주세요.
         </p>
       )}
+
+      {error && BULK_ERROR_MESSAGE[error] && (
+        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+          {BULK_ERROR_MESSAGE[error]}
+        </p>
+      )}
+
+      {bulk_created !== undefined && (
+        <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">
+          엑셀 일괄 등록 완료 — 신규 등록 {bulk_created}건, 업데이트 {bulk_updated}건
+          {Number(bulk_skipped) > 0 && `, 건너뜀 ${bulk_skipped}건 (상품명/모델명/가격 누락)`}
+        </p>
+      )}
+
+      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
+        <h2 className="text-sm font-semibold text-slate-900">엑셀로 상품 일괄 등록</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          '상품명', '모델명', '공급가' 등의 열이 있는 엑셀 파일(.xlsx)을 올리면
+          한 번에 여러 상품을 등록/업데이트합니다. 모델명이 이미 있는 상품은
+          내용이 갱신됩니다.
+        </p>
+        <form
+          action={bulkImportProductsAction}
+          encType="multipart/form-data"
+          className="mt-3 flex flex-wrap items-center gap-3"
+        >
+          <input
+            type="file"
+            name="file"
+            accept=".xlsx,.xls"
+            required
+            className="block text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-slate-800"
+          />
+          <button
+            type="submit"
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            업로드 및 일괄 등록
+          </button>
+        </form>
+      </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
@@ -141,7 +199,7 @@ export default async function AdminProductsPage({
             })}
             {allProducts.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
                   등록된 상품이 없습니다.
                 </td>
               </tr>
